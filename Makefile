@@ -4,7 +4,7 @@ DIRS = system \
 
 BUILD_DIRS = ${DIRS}
 
-all:
+all: main
 	@ echo ${BUILD_DIRS}
 	@ for dir in ${BUILD_DIRS}; do (cd $${dir}; ${MAKE}) ; \
 		if test $$? -ne 0; then break; fi; done
@@ -14,3 +14,4 @@ allgen:
 
 clean:
 	@ for dir in ${BUILD_DIRS}; do (cd $${dir}; ${MAKE} clean) ; done
+	rm -rf main
