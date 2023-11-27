@@ -1,16 +1,24 @@
-DIRS = system \
-	ui \
-	web_server
+include Makefile.inc
 
-BUILD_DIRS = ${DIRS}
+TARGET = parkrpi
 
-all:
-	@ echo ${BUILD_DIRS}
-	@ for dir in ${BUILD_DIRS}; do (cd $${dir}; ${MAKE}) ; \
-		if test $$? -ne 0; then break; fi; done
+OBJ= main.o system_server.o web_server.o input.o gui.o
 
-allgen:
-	@ for dir in ${BUILD_DIRS}; do (cd $${dir}; ${MAKE} allgen) ; done
+all: ${OBJ}
+	${CC} -o ${TARGET} ${OBJ}
+
+system_server.o: ${SYSTEM}/system_server.h ${SYSTEM}/system_server.c
+	${CC} -g ${INC} -c ${SYSTEM}/system_server.c
+
+gui.o: ${UI}/gui.h ${UI}/gui.c
+	${CC} -g ${INC} -c ${UI}/gui.c
+
+input.o: ${UI}/input.h ${UI}/input.c
+	${CC} -g ${INC} -c ${UI}/input.c
+
+web_server.o: ${WEB_SERVER}/web_server.h ${WEB_SERVER}/web_server.c
+	${CC} -g ${INC} -c ${WEB_SERVER}/web_server.c
 
 clean:
-	@ for dir in ${BUILD_DIRS}; do (cd $${dir}; ${MAKE} clean) ; done
+	rm -rf *.o
+	rm -rf *.o parkrpi
