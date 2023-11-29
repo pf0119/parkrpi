@@ -10,7 +10,6 @@
 int create_gui()
 {
     pid_t systemPid;
-    const char *name = "gui";
 
     printf("여기서 GUI 프로세스를 생성합니다.\n");
 
