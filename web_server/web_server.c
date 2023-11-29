@@ -9,8 +9,6 @@ int create_web_server()
 {
     pid_t systemPid;
 
-    const char *name = "web_server";
-
     printf("여기서 Web Server 프로세스를 생성합니다.\n");
 
     systemPid = fork();
