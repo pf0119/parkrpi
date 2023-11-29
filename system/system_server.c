@@ -6,8 +6,6 @@
 #include <input.h>
 #include <web_server.h>
 
-#include <wait.h>
-
 int system_server()
 {
     printf("나 system_server 프로세스!\n");
@@ -36,7 +34,7 @@ int create_system_server()
     }
     else if(systemPid > 0)
     {
-        wait(NULL);
+        ;
     }
     else
     {
