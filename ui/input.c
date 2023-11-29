@@ -24,5 +24,21 @@ int create_input()
 
     printf("여기서 input 프로세스를 생성합니다.\n");
 
+    systemPid = fork();
+    if(!systemPid)
+    {
+        if(prctl(PR_SET_NAME, (unsigned long)name) < 0)
+            perror("prctl() error");
+        input();
+    }
+    else if(systemPid > 0)
+    {
+        ;
+    }
+    else
+    {
+        printf("fork() failed!!\n");
+    }
+
     return 0;
 }
