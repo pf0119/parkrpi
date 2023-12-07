@@ -17,7 +17,7 @@ static int timer = 0;
 static void timer_handler()
 {
     timer++;
-    printf("one tick : %d!!\n", timer);
+    //printf("one tick : %d!!\n", timer);
     return;
 }
 
@@ -44,7 +44,20 @@ void set_timer(long sec_delay, long usec_delay)
 
 int system_server()
 {
+    /* 4. 타이머 */
+    struct sigaction sigact;
+
     printf("나 system_server 프로세스!\n");
+
+    sigact.sa_flags = SA_SIGINFO;
+    sigact.sa_sigaction = timer_handler;
+    if(sigaction(SIGALRM, &sigact, NULL) < 0)
+    {
+        printf("sigaction err!!\n");
+        return -1;
+    }
+
+    set_timer(1, 0);
 
     while (1) {
         sleep(1);
@@ -58,20 +71,7 @@ int create_system_server()
     /* 2. 프로세스 관련 시스템 콜 */
     pid_t systemPid;
     const char *name = "system_server";
-    /* 4. 타이머 */
-    struct sigaction sigact;
 
-    sigact.sa_flags = SA_SIGINFO;
-    sigact.sa_sigaction = timer_handler;
-    if(sigaction(SIGALRM, &sigact, NULL) < 0)
-    {
-        printf("sigaction err!!\n");
-        return -1;
-    }
-
-    set_timer(1, 0);
-
-    /* 2. 프로세스 관련 시스템 콜 */
     printf("여기서 시스템 프로세스를 생성합니다.\n");
 
     systemPid = fork();
