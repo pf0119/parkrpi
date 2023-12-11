@@ -256,14 +256,14 @@ int input()
     }
 
     /* 5. 스레드 */
-    if(!(retcode = pthread_create(&cTid, NULL, command_thread, "command thread\n")))
+    if((retcode = pthread_create(&cTid, NULL, command_thread, "command thread\n") < 0))
     {
         assert(retcode != 0);
         perror("thread create error:");
         exit(0);
     }
 
-    if(!(retcode = pthread_create(&sTid, NULL, sensor_thread, "sensor thread\n")))
+    if((retcode = pthread_create(&sTid, NULL, sensor_thread, "sensor thread\n") < 0))
     {
         assert(retcode != 0);
         perror("thread create error:");
