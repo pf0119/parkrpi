@@ -17,6 +17,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define TOY_TOK_BUFSIZE 64
+#define TOY_TOK_DELIM " \t\r\n\a"
+
 /* 3. 시그널 */
 typedef struct _sig_ucontext {
     unsigned long uc_flags;
@@ -27,23 +30,22 @@ typedef struct _sig_ucontext {
 } sig_ucontext_t;
 
 // 레퍼런스 코드
-void segfault_handler(int sig_num, siginfo_t * info, void * ucontext) {
-  void * array[50];
-  void * caller_address;
-  char ** messages;
+void segfault_handler(int sig_num, siginfo_t* info, void* ucontext) {
+  void* array[50];
+  void* caller_address;
+  char** messages;
   int size, i;
-  sig_ucontext_t * uc;
+  sig_ucontext_t* uc;
 
-  uc = (sig_ucontext_t *) ucontext;
+  uc = (sig_ucontext_t*) ucontext;
 
   /* Get the address at the time the signal was raised */
-  caller_address = (void *) uc->uc_mcontext.rip;  // RIP: x86_64 specific     arm_pc: ARM
+  caller_address = (void*) uc->uc_mcontext.rip;  // RIP: x86_64 specific     arm_pc: ARM
 
   fprintf(stderr, "\n");
 
   if (sig_num == SIGSEGV)
-    printf("signal %d (%s), address is %p from %p\n", sig_num, strsignal(sig_num), info->si_addr,
-           (void *) caller_address);
+    printf("signal %d (%s), address is %p from %p\n", sig_num, strsignal(sig_num), info->si_addr, (void*) caller_address);
   else
     printf("signal %d (%s)\n", sig_num, strsignal(sig_num));
 
@@ -62,24 +64,33 @@ void segfault_handler(int sig_num, siginfo_t * info, void * ucontext) {
   exit(EXIT_FAILURE);
 }
 
-#if 1
-#define TOY_TOK_BUFSIZE 64
-#define TOY_TOK_DELIM " \t\r\n\a"
+/*
+ *  sensor thread
+ */
+void* sensor_thread(void* arg)
+{
+    (void)arg;
+    while(1)
+        sleep(1);
+
+    return 0;
+}
+
 /*
  *  command thread
  */
 
-int toy_send(char **args);
-int toy_shell(char **args);
-int toy_exit(char **args);
+int toy_send(char** args);
+int toy_shell(char** args);
+int toy_exit(char** args);
 
-char *builtin_str[] = {
+char* builtin_str[] = {
     "send",
     "sh",
     "exit"
 };
 
-int (*builtin_func[]) (char **) = {
+int (*builtin_func[]) (char**) = {
     &toy_send,
     &toy_shell,
     &toy_exit
@@ -90,20 +101,20 @@ int toy_num_builtins()
     return sizeof(builtin_str) / sizeof(char *);
 }
 
-int toy_send(char **args)
+int toy_send(char** args)
 {
     printf("send message: %s\n", args[1]);
 
     return 1;
 }
 
-int toy_exit(char **args)
+int toy_exit(char** args)
 {
     (void)args;
     return 0;
 }
 
-int toy_shell(char **args)
+int toy_shell(char** args)
 {
     pid_t pid;
     int status;
@@ -127,7 +138,7 @@ int toy_shell(char **args)
     return 1;
 }
 
-int toy_execute(char **args)
+int toy_execute(char** args)
 {
     int i;
 
@@ -144,7 +155,7 @@ int toy_execute(char **args)
     return 1;
 }
 
-char *toy_read_line(void)
+char* toy_read_line(void)
 {
     char *line = NULL;
     size_t bufsize = 0;
@@ -160,11 +171,11 @@ char *toy_read_line(void)
     return line;
 }
 
-char **toy_split_line(char *line)
+char** toy_split_line(char *line)
 {
     int bufsize = TOY_TOK_BUFSIZE, position = 0;
-    char **tokens = malloc(bufsize * sizeof(char *));
-    char *token, **tokens_backup;
+    char** tokens = malloc(bufsize* sizeof(char *));
+    char* token, **tokens_backup;
 
     if (!tokens) {
         fprintf(stderr, "toy: allocation error\n");
@@ -179,7 +190,7 @@ char **toy_split_line(char *line)
         if (position >= bufsize) {
             bufsize += TOY_TOK_BUFSIZE;
             tokens_backup = tokens;
-            tokens = realloc(tokens, bufsize * sizeof(char *));
+            tokens = realloc(tokens, bufsize* sizeof(char*));
             if (!tokens) {
                 free(tokens_backup);
                 fprintf(stderr, "toy: allocation error\n");
@@ -195,8 +206,8 @@ char **toy_split_line(char *line)
 
 void toy_loop(void)
 {
-    char *line;
-    char **args;
+    char* line;
+    char** args;
     int status;
 
     do {
@@ -210,9 +221,9 @@ void toy_loop(void)
     } while (status);
 }
 
-void *command_thread(void* arg)
+void* command_thread(void* arg)
 {
-    char *s = arg;
+    char* s = arg;
 
     printf("%s", s);
 
@@ -220,15 +231,14 @@ void *command_thread(void* arg)
 
     return 0;
 }
-#endif
 
 int input()
 {
     /* 3. 시그널 */
-    int retcode;
     struct sigaction sa;
-
-    (void)retcode;
+    /* 5. 스레드 */
+    int retcode;
+    pthread_t cTid, sTid;
 
     printf("나 input 프로세스!\n");
 
@@ -243,6 +253,21 @@ int input()
         printf("sigaction failed!!\n");
 
         return 0;
+    }
+
+    /* 5. 스레드 */
+    if(!(retcode = pthread_create(&cTid, NULL, command_thread, "command thread\n")))
+    {
+        assert(retcode != 0);
+        perror("thread create error:");
+        exit(0);
+    }
+
+    if(!(retcode = pthread_create(&sTid, NULL, sensor_thread, "sensor thread\n")))
+    {
+        assert(retcode != 0);
+        perror("thread create error:");
+        exit(0);
     }
 
     while (1) {

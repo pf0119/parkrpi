@@ -5,7 +5,7 @@ TARGET = parkrpi
 OBJ= main.o system_server.o web_server.o input.o gui.o
 
 all: ${OBJ}
-	${CC} -o ${TARGET} ${OBJ}
+	${CC} -o ${TARGET} ${OBJ} -lpthread
 
 system_server.o: ${SYSTEM}/system_server.h ${SYSTEM}/system_server.c
 	${CC} -g ${CFLAGS} -c ${SYSTEM}/system_server.c
