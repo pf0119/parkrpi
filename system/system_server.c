@@ -12,6 +12,12 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include <camera_HAL.h>
+
+pthread_mutex_t system_loop_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t  system_loop_cond  = PTHREAD_COND_INITIALIZER;
+bool            system_loop_exit = false;
+
 /* 6.2.4. 타이머 */
 static int timer = 0;
 
@@ -51,7 +57,7 @@ void set_timer(long sec_delay, long usec_delay)
 
     return ;
 }
-
+/*
 static void* timer_thread(void* not_used)
 {
     (void)not_used;
@@ -69,7 +75,7 @@ static void* timer_thread(void* not_used)
     set_timer(1, 1);
 
     return 0;
-}
+} */
 
 /* 6.2.5. 스레드 */
 void* watchdog_thread(void* arg)
@@ -101,21 +107,50 @@ void* disk_service_thread(void* arg)
 
 void* camera_service_thread(void* arg)
 {
-    (void)arg;
-    while(1)
+    char *s = arg;
+
+    printf("%s", s);
+
+    toy_camera_open();
+    toy_camera_take_picture();
+
+    while (1)
         sleep(1);
 
     return 0;
+}
+
+/* 6.3.1. 락과 뮤텍스 */
+void signal_exit(void)
+{
+    /* 6.3.2 멀티 스레드 동기화 & C와 C++ 연동, 종료 메세지를 보내도록 */
+    pthread_mutex_lock(&system_loop_mutex);
+    system_loop_exit = true;
+    // pthread_cond_broadcast(&system_loop_cond);
+    pthread_cond_signal(&system_loop_cond);
+    pthread_mutex_unlock(&system_loop_mutex);
 }
 
 int system_server()
 {
     /* 6.2.5. 스레드 */
     int retcode;
-    pthread_t wTid, mTid, dTid, cTid, tTid;
+    pthread_t wTid, mTid, dTid, cTid;
+    /* 6.2.4. 타이머 */
+    struct sigaction sigact;
 
     printf("나 system_server 프로세스!\n");
 
+    /* 6.2.4. 타이머 */
+    sigact.sa_flags = SA_SIGINFO;
+    sigact.sa_sigaction = timer_handler;
+    if(sigaction(SIGALRM, &sigact, NULL) < 0)
+    {
+        printf("sigaction err!!\n");
+        return -1;
+    }
+    /* 10초 타이머 등록 */
+    set_timer(10, 0);
 
     /* 6.2.5. 스레드 */
     retcode = pthread_create(&wTid, NULL, watchdog_thread, "watchdog thread\n");
@@ -130,8 +165,16 @@ int system_server()
     retcode = pthread_create(&cTid, NULL, camera_service_thread, "camera service thread\n");
     assert(retcode == 0);
 
-    retcode = pthread_create(&tTid, NULL, timer_thread, "timer thread\n");
-    assert(retcode == 0);
+    printf("system init done.  waiting...");
+
+    // 여기서 cond wait로 대기한다. 10초 후 알람이 울리면 <== system 출력
+    pthread_mutex_lock(&system_loop_mutex);
+    while (system_loop_exit == false) {
+        pthread_cond_wait(&system_loop_cond, &system_loop_mutex);
+    }
+    pthread_mutex_unlock(&system_loop_mutex);
+
+    printf("<== system\n");
 
     while (1) {
         sleep(1);

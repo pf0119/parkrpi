@@ -17,8 +17,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TOY_TOK_BUFSIZE 64
-#define TOY_TOK_DELIM " \t\r\n\a"
+#define TOK_BUFSIZE 64
+#define TOK_DELIM " \t\r\n\a"
+#define BUFFSIZE 1024
+
+//#define PCP
 
 /* 6.2.3. 시그널 */
 typedef struct _sig_ucontext {
@@ -28,6 +31,12 @@ typedef struct _sig_ucontext {
     struct sigcontext uc_mcontext;
     sigset_t uc_sigmask;
 } sig_ucontext_t;
+
+#ifdef PCP
+/* 6.3.1 락과 뮤텍스 */
+static pthread_mutex_t global_message_mutex  = PTHREAD_MUTEX_INITIALIZER;
+static char global_message[BUFFSIZE];
+#endif /* PCP */
 
 // 레퍼런스 코드
 void segfault_handler(int sig_num, siginfo_t* info, void* ucontext) {
@@ -69,7 +78,10 @@ void segfault_handler(int sig_num, siginfo_t* info, void* ucontext) {
  */
 void* sensor_thread(void* arg)
 {
-    (void)arg;
+    char *s = arg;
+
+    printf("%s", s);
+
     while(1)
         sleep(1);
 
@@ -80,6 +92,7 @@ void* sensor_thread(void* arg)
  *  command thread
  */
 int toy_send(char** args);
+int toy_mutex(char** args);
 int toy_shell(char** args);
 int toy_exit(char** args);
 
@@ -172,7 +185,7 @@ char* toy_read_line(void)
 
 char** toy_split_line(char *line)
 {
-    int bufsize = TOY_TOK_BUFSIZE, position = 0;
+    int bufsize = TOK_BUFSIZE, position = 0;
     char** tokens = malloc(bufsize* sizeof(char *));
     char* token, **tokens_backup;
 
@@ -181,13 +194,13 @@ char** toy_split_line(char *line)
         exit(EXIT_FAILURE);
     }
 
-    token = strtok(line, TOY_TOK_DELIM);
+    token = strtok(line, TOK_DELIM);
     while (token != NULL) {
         tokens[position] = token;
         position++;
 
         if (position >= bufsize) {
-            bufsize += TOY_TOK_BUFSIZE;
+            bufsize += TOK_BUFSIZE;
             tokens_backup = tokens;
             tokens = realloc(tokens, bufsize* sizeof(char*));
             if (!tokens) {
@@ -197,7 +210,7 @@ char** toy_split_line(char *line)
             }
         }
 
-        token = strtok(NULL, TOY_TOK_DELIM);
+        token = strtok(NULL, TOK_DELIM);
     }
     tokens[position] = NULL;
     return tokens;
@@ -230,6 +243,56 @@ void* command_thread(void* arg)
 
     return 0;
 }
+
+#ifdef PCP
+// lab 9: 토이 생산자 소비자 실습
+// 임시로 추가
+#define MAX 30
+#define NUMTHREAD 3 /* number of threads */
+
+char buffer[BUFFSIZE];
+int read_count = 0, write_count = 0;
+int buflen;
+pthread_mutex_t count_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t empty = PTHREAD_COND_INITIALIZER;
+int thread_id[NUMTHREAD] = {0, 1, 2};
+int producer_count = 0, consumer_count = 0;
+
+void *toy_consumer(int *id)
+{
+    pthread_mutex_lock(&count_mutex);
+    while (consumer_count < MAX) {
+        pthread_cond_wait(&empty, &count_mutex);
+        // 큐에서 하나 꺼낸다.
+        printf("                           소비자[%d]: %c\n", *id, buffer[read_count]);
+        read_count = (read_count + 1) % BUFFSIZE;
+        fflush(stdout);
+        consumer_count++;
+    }
+    pthread_mutex_unlock(&count_mutex);
+
+    return NULL;
+}
+
+void *toy_producer(int *id)
+{
+    while (producer_count < MAX) {
+        pthread_mutex_lock(&count_mutex);
+        strcpy(buffer, "");
+        buffer[write_count] = global_message[write_count % buflen];
+        // 큐에 추가한다.
+        printf("%d - 생산자[%d]: %c \n", producer_count, *id, buffer[write_count]);
+        fflush(stdout);
+        write_count = (write_count + 1) % BUFFSIZE;
+        producer_count++;
+        pthread_cond_signal(&empty);
+        pthread_mutex_unlock(&count_mutex);
+        sleep(rand() % 3);
+    }
+
+    return (void*)0;
+}
+#endif /* PCP */
 
 int input()
 {
@@ -269,6 +332,24 @@ int input()
         perror("thread create error:");
         exit(0);
     }
+
+#ifdef PCP
+    /* 생산자 소비자 실습 */
+    int i;
+    pthread_t thread[NUMTHREAD];
+
+    pthread_mutex_lock(&global_message_mutex);
+    strcpy(global_message, "hello world!");
+    buflen = strlen(global_message);
+    pthread_mutex_unlock(&global_message_mutex);
+    pthread_create(&thread[0], NULL, (void *)toy_consumer, &thread_id[0]);
+    pthread_create(&thread[1], NULL, (void *)toy_producer, &thread_id[1]);
+    pthread_create(&thread[2], NULL, (void *)toy_producer, &thread_id[2]);
+
+    for (i = 0; i < NUMTHREAD; i++) {
+        pthread_join(thread[i], NULL);
+    }
+#endif /* PCP */
 
     while (1) {
         sleep(1);
