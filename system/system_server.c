@@ -14,6 +14,8 @@
 
 #include <camera_HAL.h>
 
+#define BUFSIZE 1024
+
 pthread_mutex_t system_loop_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  system_loop_cond  = PTHREAD_COND_INITIALIZER;
 bool            system_loop_exit = false;
@@ -98,15 +100,33 @@ void* monitor_thread(void* arg)
 
 void* disk_service_thread(void* arg)
 {
-    (void)arg;
+    char *s = arg;
+    char buf[BUFSIZE];
+    FILE* file;
+    char cmd[]="df -h ./" ;
+
+    printf("%s\n", s);
+
     while(1)
-        sleep(1);
+    {
+        // popen으로 shell을 실행하면 성능과 보안 문제가 있습니다.
+        // 향후 파일 관련 시스템 콜 시간에 위 코드 개선합니다.
+        file = popen(cmd, "r");
+        while(fgets(buf, BUFSIZE, file))
+        {
+            printf("%s", buf);
+        }
+        pclose(file);
+
+        sleep(10);
+    }
 
     return 0;
 }
 
 void* camera_service_thread(void* arg)
 {
+    (void)arg;
     char *s = arg;
 
     printf("%s", s);
