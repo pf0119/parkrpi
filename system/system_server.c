@@ -12,7 +12,7 @@
 #include <sys/time.h>
 #include <time.h>
 
-/* 4. 타이머 */
+/* 6.2.4. 타이머 */
 static int timer = 0;
 
 /* 레퍼런스 - 의미파악 필요
@@ -71,7 +71,7 @@ static void* timer_thread(void* not_used)
     return 0;
 }
 
-/* 5. 스레드 */
+/* 6.2.5. 스레드 */
 void* watchdog_thread(void* arg)
 {
     (void)arg;
@@ -110,14 +110,14 @@ void* camera_service_thread(void* arg)
 
 int system_server()
 {
-    /* 5. 스레드 */
+    /* 6.2.5. 스레드 */
     int retcode;
     pthread_t wTid, mTid, dTid, cTid, tTid;
 
     printf("나 system_server 프로세스!\n");
 
 
-    /* 5. 스레드 */
+    /* 6.2.5. 스레드 */
     retcode = pthread_create(&wTid, NULL, watchdog_thread, "watchdog thread\n");
     assert(retcode == 0);
 
@@ -142,7 +142,7 @@ int system_server()
 
 int create_system_server()
 {
-    /* 2. 프로세스 관련 시스템 콜 */
+    /* 6.2.2. 프로세스 관련 시스템 콜 */
     pid_t systemPid;
     const char *name = "system_server";
 

@@ -20,7 +20,7 @@
 #define TOY_TOK_BUFSIZE 64
 #define TOY_TOK_DELIM " \t\r\n\a"
 
-/* 3. 시그널 */
+/* 6.2.3. 시그널 */
 typedef struct _sig_ucontext {
     unsigned long uc_flags;
     struct ucontext *uc_link;
@@ -79,7 +79,6 @@ void* sensor_thread(void* arg)
 /*
  *  command thread
  */
-
 int toy_send(char** args);
 int toy_shell(char** args);
 int toy_exit(char** args);
@@ -234,14 +233,15 @@ void* command_thread(void* arg)
 
 int input()
 {
-    /* 3. 시그널 */
+    /* 6.2.3. 시그널 */
     struct sigaction sa;
-    /* 5. 스레드 */
+    /* 6.2.5. 스레드 */
     int retcode;
     pthread_t cTid, sTid;
 
     printf("나 input 프로세스!\n");
 
+    /* 6.2.3. 시그널 */
     memset(&sa, 0, sizeof(sigaction));
     sigemptyset(&sa.sa_mask);
 
@@ -255,7 +255,7 @@ int input()
         return 0;
     }
 
-    /* 5. 스레드 */
+    /* 6.2.5. 스레드 */
     if((retcode = pthread_create(&cTid, NULL, command_thread, "command thread\n") < 0))
     {
         assert(retcode != 0);
@@ -279,7 +279,7 @@ int input()
 
 int create_input()
 {
-    /* 2. 프로세스 관련 시스템 콜 */
+    /* 6.2.2. 프로세스 관련 시스템 콜 */
     pid_t systemPid;
     const char *name = "input";
 

@@ -6,7 +6,7 @@
 #include <input.h>
 #include <web_server.h>
 
-/* 3. 시그널 */
+/* 6.2.3. 시그널 */
 static void signalHandler(int sig)
 {
     int status, savedErrno;
@@ -33,13 +33,13 @@ static void signalHandler(int sig)
 
 int main()
 {
-    /* 2. 프로세스 관련 시스템 콜 */
+    /* 6.2.2. 프로세스 관련 시스템 콜 */
     pid_t spid, gpid, ipid, wpid;
     int status, savedErrno;
 
     (void)savedErrno;
 
-    /* 3. 시그널 */
+    /* 6.2.3. 시그널 */
     int sigCnt;
 
     (void)sigCnt;
