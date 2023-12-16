@@ -21,10 +21,10 @@ web_server.o: ${WEB_SERVER}/web_server.h ${WEB_SERVER}/web_server.c
 	${CC} -g ${CFLAGS} -c ${WEB_SERVER}/web_server.c
 
 camera_HAL.o: ${HAL}/camera_HAL.cpp
-	${CXX} -g ${INCLUEDS} ${CXXFLAGS} -c ${HAL}/camera_HAL.cpp
+	${CXX} -g ${CXXFLAGS} -c ${HAL}/camera_HAL.cpp
 
 ControlThread.o: ${HAL}/ControlThread.cpp
-	${CXX} -g ${INCLUEDS} ${CXXFLAGS} -c ${HAL}/ControlThread.cpp
+	${CXX} -g ${CXXFLAGS} -c ${HAL}/ControlThread.cpp
 
 clean:
 	rm -rf *.o parkrpi

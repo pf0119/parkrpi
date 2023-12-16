@@ -12,13 +12,23 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include <semaphore.h>
 #include <camera_HAL.h>
+
+#include <mqueue.h>
+#include <mq_message.h>
 
 #define BUFSIZE 1024
 
 pthread_mutex_t system_loop_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  system_loop_cond  = PTHREAD_COND_INITIALIZER;
 bool            system_loop_exit = false;
+
+/* 6.3.2. POSIX 메시지 큐 */
+static mqd_t watchdog_queue;
+static mqd_t monitor_queue;
+static mqd_t disk_queue;
+static mqd_t camera_queue;
 
 /* 6.2.4. 타이머 */
 static int timer = 0;
@@ -82,36 +92,61 @@ static void* timer_thread(void* not_used)
 /* 6.2.5. 스레드 */
 void* watchdog_thread(void* arg)
 {
-    (void)arg;
+    int ret;
+    mq_msg_t msg;
+
+    printf("%s", (char*)arg);
+
     while(1)
-        sleep(1);
+    {
+        /* 6.3.2. POSIX 메시지 큐 */
+        ret = (int)mq_receive(watchdog_queue, (void*)&msg, sizeof(mq_msg_t), 0);
+        assert(ret >= 0);
+        printf("%s : 메시지가 도착했습니다.\n", __func__);
+        printf("msg.type : %d\n", msg.msg_type);
+        printf("msg.param1 : %d\n", msg.param1);
+        printf("msg.param2 : %d\n", msg.param2);
+    }
 
     return 0;
 }
 
 void* monitor_thread(void* arg)
 {
-    (void)arg;
+    int ret;
+    mq_msg_t msg;
+
+    printf("%s", (char*)arg);
+
     while(1)
-        sleep(1);
+    {
+        /* 6.3.2. POSIX 메시지 큐 */
+        ret = (int)mq_receive(monitor_queue, (void*)&msg, sizeof(mq_msg_t), 0);
+        assert(ret >= 0);
+        printf("%s : 메시지가 도착했습니다.\n", __func__);
+        printf("msg.type : %d\n", msg.msg_type);
+        printf("msg.param1 : %d\n", msg.param1);
+        printf("msg.param2 : %d\n", msg.param2);
+    }
 
     return 0;
 }
 
 void* disk_service_thread(void* arg)
 {
-    char *s = arg;
     char buf[BUFSIZE];
     FILE* file;
-    char cmd[]="df -h ./" ;
 
-    printf("%s\n", s);
+    int ret;
+    mq_msg_t msg;
+
+    printf("%s\n", (char*)arg);
 
     while(1)
     {
         // popen으로 shell을 실행하면 성능과 보안 문제가 있습니다.
         // 향후 파일 관련 시스템 콜 시간에 위 코드 개선합니다.
-        file = popen(cmd, "r");
+        file = popen("df -h ./", "r");
         while(fgets(buf, BUFSIZE, file))
         {
             printf("%s", buf);
@@ -119,10 +154,20 @@ void* disk_service_thread(void* arg)
         pclose(file);
 
         sleep(10);
+
+        /* 6.3.2. POSIX 메시지 큐 */
+        ret = (int)mq_receive(disk_queue, (void*)&msg, sizeof(mq_msg_t), 0);
+        assert(ret >= 0);
+        printf("%s : 메시지가 도착했습니다.\n", __func__);
+        printf("msg.type : %d\n", msg.msg_type);
+        printf("msg.param1 : %d\n", msg.param1);
+        printf("msg.param2 : %d\n", msg.param2);
     }
 
     return 0;
 }
+
+#define CAMERA_TAKE_PICTURE 1
 
 void* camera_service_thread(void* arg)
 {
@@ -132,11 +177,27 @@ void* camera_service_thread(void* arg)
     printf("%s", s);
 
     toy_camera_open();
-    toy_camera_take_picture();
 
-    while (1)
-        sleep(1);
+    /* 6.3.2. POSIX 메시지 큐 */
+    int ret;
+    mq_msg_t msg;
 
+    printf("%s", (char*)arg);
+
+    while(1)
+    {
+        ret = (int)mq_receive(camera_queue, (void*)&msg, sizeof(mq_msg_t), 0);
+        assert(ret >= 0);
+        printf("%s : 메시지가 도착했습니다.\n", __func__);
+        printf("msg.type : %d\n", msg.msg_type);
+        printf("msg.param1 : %d\n", msg.param1);
+        printf("msg.param2 : %d\n", msg.param2);
+        if(msg.msg_type == CAMERA_TAKE_PICTURE)
+        {
+            printf("received %d!! toy_camera_take_picture() will be called!!\n", msg.msg_type);
+            toy_camera_take_picture();
+        }
+    }
     return 0;
 }
 
@@ -161,6 +222,16 @@ int system_server()
 
     printf("나 system_server 프로세스!\n");
 
+    /* 6.3.4. POSIX 메시지 큐 */
+    watchdog_queue = mq_open("/watchdog_queue", O_RDWR);
+    assert(watchdog_queue != -1);
+    monitor_queue = mq_open("/monitor_queue", O_RDWR);
+    assert(monitor_queue != -1);
+    disk_queue = mq_open("/disk_queue", O_RDWR);
+    assert(disk_queue != -1);
+    camera_queue = mq_open("/camera_queue", O_RDWR);
+    assert(camera_queue != -1);
+
     /* 6.2.4. 타이머 */
     sigact.sa_flags = SA_SIGINFO;
     sigact.sa_sigaction = timer_handler;
@@ -175,13 +246,10 @@ int system_server()
     /* 6.2.5. 스레드 */
     retcode = pthread_create(&wTid, NULL, watchdog_thread, "watchdog thread\n");
     assert(retcode == 0);
-
     retcode = pthread_create(&mTid, NULL, monitor_thread, "monitor thread\n");
     assert(retcode == 0);
-
     retcode = pthread_create(&dTid, NULL, disk_service_thread, "disk service thread\n");
     assert(retcode == 0);
-
     retcode = pthread_create(&cTid, NULL, camera_service_thread, "camera service thread\n");
     assert(retcode == 0);
 

@@ -7,7 +7,8 @@ HAL = ./hal
 
 DIRS = ${SYSTEM} ${UI} ${WEB_SERVER}
 
-INC = -I${SYSTEM} -I${UI} -I${WEB_SERVER} -I${HAL}
+# -I./ is to add mq_message.h
+INC = -I${SYSTEM} -I${UI} -I${WEB_SERVER} -I${HAL} -I./
 
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror ${INC}

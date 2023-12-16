@@ -17,9 +17,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TOK_BUFSIZE 64
-#define TOK_DELIM " \t\r\n\a"
-#define BUFFSIZE 1024
+#include <ucontext.h>
+#include <mqueue.h>
+//#include <toy_message.h>
+#include <mq_message.h>
+
+#define TOY_TOK_BUFSIZE 64
+#define TOY_TOK_DELIM " \t\r\n\a"
+#define TOY_BUFFSIZE 1024
 
 //#define PCP
 
@@ -32,45 +37,51 @@ typedef struct _sig_ucontext {
     sigset_t uc_sigmask;
 } sig_ucontext_t;
 
-#ifdef PCP
 /* 6.3.1 락과 뮤텍스 */
-static pthread_mutex_t global_message_mutex  = PTHREAD_MUTEX_INITIALIZER;
-static char global_message[BUFFSIZE];
-#endif /* PCP */
+static pthread_mutex_t global_message_mutex = PTHREAD_MUTEX_INITIALIZER;
+static char global_message[TOY_BUFFSIZE];
+
+/* 6.3.4. POSIX 메시지 큐 */
+static mqd_t watchdog_queue;
+static mqd_t monitor_queue;
+static mqd_t disk_queue;
+static mqd_t camera_queue;
 
 // 레퍼런스 코드
-void segfault_handler(int sig_num, siginfo_t* info, void* ucontext) {
-  void* array[50];
-  void* caller_address;
-  char** messages;
-  int size, i;
-  sig_ucontext_t* uc;
+void segfault_handler(int sig_num, siginfo_t* info, void* ucontext)
+{
+    void* array[50];
+    void* caller_address;
+    char** messages;
+    int size, i;
+    sig_ucontext_t* uc;
 
-  uc = (sig_ucontext_t*) ucontext;
+    uc = (sig_ucontext_t*) ucontext;
 
-  /* Get the address at the time the signal was raised */
-  caller_address = (void*) uc->uc_mcontext.rip;  // RIP: x86_64 specific     arm_pc: ARM
+    /* Get the address at the time the signal was raised */
+    caller_address = (void*) uc->uc_mcontext.rip;  // RIP: x86_64 specific     arm_pc: ARM
 
-  fprintf(stderr, "\n");
+    fprintf(stderr, "\n");
 
-  if (sig_num == SIGSEGV)
-    printf("signal %d (%s), address is %p from %p\n", sig_num, strsignal(sig_num), info->si_addr, (void*) caller_address);
-  else
-    printf("signal %d (%s)\n", sig_num, strsignal(sig_num));
+    if (sig_num == SIGSEGV)
+        printf("signal %d (%s), address is %p from %p\n", sig_num, strsignal(sig_num), info->si_addr, (void*) caller_address);
+    else
+        printf("signal %d (%s)\n", sig_num, strsignal(sig_num));
 
-  size = backtrace(array, 50);
-  /* overwrite sigaction with caller's address */
-  array[1] = caller_address;
-  messages = backtrace_symbols(array, size);
+    size = backtrace(array, 50);
+    /* overwrite sigaction with caller's address */
+    array[1] = caller_address;
+    messages = backtrace_symbols(array, size);
 
-  /* skip first stack frame (points here) */
-  for (i = 1; i < size && messages != NULL; ++i) {
-    printf("[bt]: (%d) %s\n", i, messages[i]);
-  }
+    /* skip first stack frame (points here) */
+    for (i = 1; i < size && messages != NULL; ++i)
+    {
+        printf("[bt]: (%d) %s\n", i, messages[i]);
+    }
 
-  free(messages);
+    free(messages);
 
-  exit(EXIT_FAILURE);
+    exit(EXIT_FAILURE);
 }
 
 /*
@@ -91,20 +102,25 @@ void* sensor_thread(void* arg)
 /*
  *  command thread
  */
-int toy_send(char** args);
-int toy_mutex(char** args);
-int toy_shell(char** args);
-int toy_exit(char** args);
+int toy_send(char **args);
+int toy_mutex(char **args);
+int toy_shell(char **args);
+int toy_message_queue(char **args);
+int toy_exit(char **args);
 
-char* builtin_str[] = {
+char *builtin_str[] = {
     "send",
+    "mu",
     "sh",
+    "mq",
     "exit"
 };
 
-int (*builtin_func[]) (char**) = {
+int (*builtin_func[]) (char **) = {
     &toy_send,
+    &toy_mutex,
     &toy_shell,
+    &toy_message_queue,
     &toy_exit
 };
 
@@ -113,20 +129,53 @@ int toy_num_builtins()
     return sizeof(builtin_str) / sizeof(char *);
 }
 
-int toy_send(char** args)
+int toy_send(char **args)
 {
     printf("send message: %s\n", args[1]);
 
     return 1;
 }
 
-int toy_exit(char** args)
+int toy_mutex(char **args)
+{
+    if (args[1] == NULL) {
+        return 1;
+    }
+
+    printf("save message: %s\n", args[1]);
+    pthread_mutex_lock(&global_message_mutex);
+    strcpy(global_message, args[1]);
+    pthread_mutex_unlock(&global_message_mutex);
+    return 1;
+}
+
+int toy_message_queue(char **args)
+{
+    int mqretcode;
+    mq_msg_t msg;
+
+    if (args[1] == NULL || args[2] == NULL) {
+        return 1;
+    }
+
+    if (!strcmp(args[1], "camera")) {
+        msg.msg_type = atoi(args[2]);
+        msg.param1 = 0;
+        msg.param2 = 0;
+        mqretcode = mq_send(camera_queue, (char *)&msg, sizeof(msg), 0);
+        assert(mqretcode == 0);
+    }
+
+    return 1;
+}
+
+int toy_exit(char **args)
 {
     (void)args;
     return 0;
 }
 
-int toy_shell(char** args)
+int toy_shell(char **args)
 {
     pid_t pid;
     int status;
@@ -139,10 +188,8 @@ int toy_shell(char** args)
         exit(EXIT_FAILURE);
     } else if (pid < 0) {
         perror("toy");
-    } else
-{
-        do
-        {
+    } else {
+        do {
             waitpid(pid, &status, WUNTRACED);
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
@@ -150,7 +197,7 @@ int toy_shell(char** args)
     return 1;
 }
 
-int toy_execute(char** args)
+int toy_execute(char **args)
 {
     int i;
 
@@ -167,7 +214,7 @@ int toy_execute(char** args)
     return 1;
 }
 
-char* toy_read_line(void)
+char *toy_read_line(void)
 {
     char *line = NULL;
     size_t bufsize = 0;
@@ -183,26 +230,26 @@ char* toy_read_line(void)
     return line;
 }
 
-char** toy_split_line(char *line)
+char **toy_split_line(char *line)
 {
-    int bufsize = TOK_BUFSIZE, position = 0;
-    char** tokens = malloc(bufsize* sizeof(char *));
-    char* token, **tokens_backup;
+    int bufsize = TOY_TOK_BUFSIZE, position = 0;
+    char **tokens = malloc(bufsize * sizeof(char *));
+    char *token, **tokens_backup;
 
     if (!tokens) {
         fprintf(stderr, "toy: allocation error\n");
         exit(EXIT_FAILURE);
     }
 
-    token = strtok(line, TOK_DELIM);
+    token = strtok(line, TOY_TOK_DELIM);
     while (token != NULL) {
         tokens[position] = token;
         position++;
 
         if (position >= bufsize) {
-            bufsize += TOK_BUFSIZE;
+            bufsize += TOY_TOK_BUFSIZE;
             tokens_backup = tokens;
-            tokens = realloc(tokens, bufsize* sizeof(char*));
+            tokens = realloc(tokens, bufsize * sizeof(char *));
             if (!tokens) {
                 free(tokens_backup);
                 fprintf(stderr, "toy: allocation error\n");
@@ -210,7 +257,7 @@ char** toy_split_line(char *line)
             }
         }
 
-        token = strtok(NULL, TOK_DELIM);
+        token = strtok(NULL, TOY_TOK_DELIM);
     }
     tokens[position] = NULL;
     return tokens;
@@ -218,8 +265,8 @@ char** toy_split_line(char *line)
 
 void toy_loop(void)
 {
-    char* line;
-    char** args;
+    char *line;
+    char **args;
     int status;
 
     do {
@@ -227,15 +274,14 @@ void toy_loop(void)
         line = toy_read_line();
         args = toy_split_line(line);
         status = toy_execute(args);
-
         free(line);
         free(args);
     } while (status);
 }
 
-void* command_thread(void* arg)
+void *command_thread(void* arg)
 {
-    char* s = arg;
+    char *s = arg;
 
     printf("%s", s);
 
@@ -243,56 +289,6 @@ void* command_thread(void* arg)
 
     return 0;
 }
-
-#ifdef PCP
-// lab 9: 토이 생산자 소비자 실습
-// 임시로 추가
-#define MAX 30
-#define NUMTHREAD 3 /* number of threads */
-
-char buffer[BUFFSIZE];
-int read_count = 0, write_count = 0;
-int buflen;
-pthread_mutex_t count_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t empty = PTHREAD_COND_INITIALIZER;
-int thread_id[NUMTHREAD] = {0, 1, 2};
-int producer_count = 0, consumer_count = 0;
-
-void *toy_consumer(int *id)
-{
-    pthread_mutex_lock(&count_mutex);
-    while (consumer_count < MAX) {
-        pthread_cond_wait(&empty, &count_mutex);
-        // 큐에서 하나 꺼낸다.
-        printf("                           소비자[%d]: %c\n", *id, buffer[read_count]);
-        read_count = (read_count + 1) % BUFFSIZE;
-        fflush(stdout);
-        consumer_count++;
-    }
-    pthread_mutex_unlock(&count_mutex);
-
-    return NULL;
-}
-
-void *toy_producer(int *id)
-{
-    while (producer_count < MAX) {
-        pthread_mutex_lock(&count_mutex);
-        strcpy(buffer, "");
-        buffer[write_count] = global_message[write_count % buflen];
-        // 큐에 추가한다.
-        printf("%d - 생산자[%d]: %c \n", producer_count, *id, buffer[write_count]);
-        fflush(stdout);
-        write_count = (write_count + 1) % BUFFSIZE;
-        producer_count++;
-        pthread_cond_signal(&empty);
-        pthread_mutex_unlock(&count_mutex);
-        sleep(rand() % 3);
-    }
-
-    return (void*)0;
-}
-#endif /* PCP */
 
 int input()
 {
@@ -317,6 +313,19 @@ int input()
 
         return 0;
     }
+
+    /* 6.3.4. POSIX 메시지 큐 */
+    /* 메시지 큐를 오픈 한다.
+     * 하지만, 사실 fork로 생성했기 때문에 파일 디스크립터 공유되었음. 따라서, extern으로 사용 가능
+    */
+    watchdog_queue = mq_open("/watchdog_queue", O_RDWR);
+    assert(watchdog_queue != -1);
+    monitor_queue = mq_open("/monitor_queue", O_RDWR);
+    assert(monitor_queue != -1);
+    disk_queue = mq_open("/disk_queue", O_RDWR);
+    assert(disk_queue != -1);
+    camera_queue = mq_open("/camera_queue", O_RDWR);
+    assert(camera_queue != -1);
 
     /* 6.2.5. 스레드 */
     if((retcode = pthread_create(&cTid, NULL, command_thread, "command thread\n") < 0))
