@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <sys/prctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <system_server.h>
 #include <gui.h>
@@ -11,14 +14,14 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <time.h>
-
 #include <semaphore.h>
 #include <camera_HAL.h>
-
 #include <mqueue.h>
 #include <mq_message.h>
-
 #include <shared_memory.h>
+#include <dirent.h>
+#include <sys/inotify.h>
+
 
 #define BUFSIZE 1024
 
@@ -189,36 +192,80 @@ void* monitor_thread(void* arg)
     return 0;
 }
 
+/* 6.4.4. 파일 시스템 관련 시스템 콜 */
+// https://stackoverflow.com/questions/21618260/how-to-get-total-size-of-subdirectories-in-c
+static long get_directory_size(char *dirname)
+{
+    DIR *dir = opendir(dirname);
+    if (dir == 0)
+        return 0;
+
+    struct dirent *dit;
+    struct stat st;
+    long size = 0;
+    long total_size = 0;
+    char filePath[1024];
+
+    while ((dit = readdir(dir)) != NULL) {
+        if ( (strcmp(dit->d_name, ".") == 0) || (strcmp(dit->d_name, "..") == 0) )
+            continue;
+
+        sprintf(filePath, "%s/%s", dirname, dit->d_name);
+        if (lstat(filePath, &st) != 0)
+            continue;
+        size = st.st_size;
+
+        if (S_ISDIR(st.st_mode)) {
+            long dir_size = get_directory_size(filePath) + size;
+            total_size += dir_size;
+        } else {
+            total_size += size;
+        }
+    }
+    return total_size;
+}
+
 void* disk_service_thread(void* arg)
 {
-    char buf[BUFSIZE];
-    FILE* file;
-
-    int ret;
-    mq_msg_t msg;
+    int inotifyFd, wd;
+    char buf[BUFSIZE] __attribute__ ((aligned(8)));
+    ssize_t numRead;
+    char *p;
+    struct inotify_event *event;
+    char *directory = "./fs";
+    int total_size;
 
     printf("%s\n", (char*)arg);
 
+    inotifyFd = inotify_init();
+    if(inotifyFd == -1)
+        return 0;
+
+    wd = inotify_add_watch(inotifyFd, directory, IN_CREATE);
+    if(wd == -1)
+        return 0;
+
     while(1)
     {
-        // popen으로 shell을 실행하면 성능과 보안 문제가 있습니다.
-        // 향후 파일 관련 시스템 콜 시간에 위 코드 개선합니다.
-        file = popen("df -h ./", "r");
-        while(fgets(buf, BUFSIZE, file))
+        numRead = read(inotifyFd, buf, BUFSIZE);
+        if(!numRead)
         {
-            printf("%s", buf);
+            printf("read() from inotify fd returned 0!\n");
+            return 0;
         }
-        pclose(file);
+        else if(numRead == -1)
+        {
+            printf("read() failed!!\n");
+            return 0;
+        }
 
-        sleep(10);
-
-        /* 6.3.2. POSIX 메시지 큐 */
-        ret = (int)mq_receive(disk_queue, (void*)&msg, sizeof(mq_msg_t), 0);
-        assert(ret >= 0);
-        printf("%s : 메시지가 도착했습니다.\n", __func__);
-        printf("msg.type : %d\n", msg.msg_type);
-        printf("msg.param1 : %d\n", msg.param1);
-        printf("msg.param2 : %d\n", msg.param2);
+        for (p = buf; p < buf + numRead; )
+        {
+            event = (struct inotify_event*)p;
+            p += sizeof(struct inotify_event) + event->len;
+        }
+        total_size = get_directory_size(directory);
+        printf("directory size: %d\n", total_size);
     }
 
     return 0;
