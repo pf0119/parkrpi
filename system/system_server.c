@@ -18,6 +18,8 @@
 #include <mqueue.h>
 #include <mq_message.h>
 
+#include <shared_memory.h>
+
 #define BUFSIZE 1024
 
 pthread_mutex_t system_loop_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -32,10 +34,14 @@ static mqd_t camera_queue;
 
 /* 6.2.4. 타이머 */
 static int timer = 0;
+
 /* 6.4.1. POSIX 세마포어 & 공유메모리 */
 pthread_mutex_t timer_mutex = PTHREAD_MUTEX_INITIALIZER;
 static sem_t global_timer_sem;
 static bool global_timer_stopped;
+
+/* 6.4.2. 시스템 V 메시지 큐 & 세마포어 & 공유 메모리 */
+static shm_sensor_t *the_sensor_info = NULL;
 
 static void timer_expire_signal_handler()
 {
@@ -77,6 +83,16 @@ void set_periodic_timer(long sec_delay, long usec_delay)
     setitimer(ITIMER_REAL, &itimer_val, (struct itimerval*)0);
 
     return ;
+}
+
+int posix_sleep_ms(unsigned int timeout_ms)
+{
+    struct timespec sleep_time;
+
+    sleep_time.tv_sec = timeout_ms / MILLISEC_PER_SECOND;
+    sleep_time.tv_nsec = (timeout_ms % MILLISEC_PER_SECOND) * (NANOSEC_PER_USEC * USEC_PER_MILLISEC);
+
+    return nanosleep(&sleep_time, NULL);
 }
 
 static void* timer_thread(void* not_used)
@@ -139,10 +155,13 @@ void* watchdog_thread(void* arg)
     return 0;
 }
 
+#define SENSOR_DATA 1
+
 void* monitor_thread(void* arg)
 {
     int ret;
     mq_msg_t msg;
+    int shmid;
 
     printf("%s", (char*)arg);
 
@@ -155,6 +174,16 @@ void* monitor_thread(void* arg)
         printf("msg.type : %d\n", msg.msg_type);
         printf("msg.param1 : %d\n", msg.param1);
         printf("msg.param2 : %d\n", msg.param2);
+        /* 6.4.2. 시스템 V 메시지 큐 & 세마포어 & 공유 메모리 */
+        if(msg.msg_type == SENSOR_DATA)
+        {
+            shmid = msg.param1;
+            the_sensor_info = toy_shm_attach(shmid);
+            printf("sensor temp: %d\n", the_sensor_info->temp);
+            printf("sensor info: %d\n", the_sensor_info->press);
+            printf("sensor humidity: %d\n", the_sensor_info->humidity);
+            toy_shm_detach(the_sensor_info);
+        }
     }
 
     return 0;

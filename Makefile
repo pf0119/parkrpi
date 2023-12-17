@@ -2,7 +2,7 @@ include Makefile.inc
 
 TARGET = parkrpi
 
-OBJ = main.o system_server.o web_server.o input.o gui.o
+OBJ = main.o system_server.o shared_memory.o web_server.o input.o gui.o
 CXXOBJ = camera_HAL.o ControlThread.o
 
 all: ${OBJ} ${CXXOBJ}
@@ -10,6 +10,9 @@ all: ${OBJ} ${CXXOBJ}
 
 system_server.o: ${SYSTEM}/system_server.h ${SYSTEM}/system_server.c
 	${CC} -g ${CFLAGS} -c ${SYSTEM}/system_server.c
+
+shared_memory.o: ${SYSTEM}/shared_memory.h ${SYSTEM}/shared_memory.c
+	${CC} -g ${CFLAGS} -c ${SYSTEM}/shared_memory.c
 
 gui.o: ${UI}/gui.h ${UI}/gui.c
 	${CC} -g ${CFLAGS} -c ${UI}/gui.c
