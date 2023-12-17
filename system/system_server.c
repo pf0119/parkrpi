@@ -32,25 +32,34 @@ static mqd_t camera_queue;
 
 /* 6.2.4. 타이머 */
 static int timer = 0;
+/* 6.4.1. POSIX 세마포어 & 공유메모리 */
+pthread_mutex_t timer_mutex = PTHREAD_MUTEX_INITIALIZER;
+static sem_t global_timer_sem;
+static bool global_timer_stopped;
 
-/* 레퍼런스 - 의미파악 필요
 static void timer_expire_signal_handler()
 {
+    /* 6.4.1. POSIX 세마포어 & 공유메모리 */
     // signal 문맥에서는 비동기 시그널 안전 함수(async-signal-safe function) 사용
     // man signal 확인
     // sem_post는 async-signal-safe function
     // 여기서는 sem_post 사용
     sem_post(&global_timer_sem);
-} */
+}
 
-static void timer_handler()
+static void system_timeout_handler()
 {
+    /* 6.4.1. POSIX 세마포어 & 공유메모리 */
+    // 여기는 signal hander가 아니기 때문에 안전하게 mutex lock 사용 가능
+    // timer 변수는 전역 변수이므로 뮤텍스를 사용한다
+    pthread_mutex_lock(&timer_mutex);
     timer++;
-    //printf("one tick : %d!!\n", timer);
+    //printf("timer: %d\n", timer);
+    pthread_mutex_unlock(&timer_mutex);
     return;
 }
 
-void set_timer(long sec_delay, long usec_delay)
+void set_periodic_timer(long sec_delay, long usec_delay)
 {
     /*
     struct itimerval itimer_val = {
@@ -69,25 +78,44 @@ void set_timer(long sec_delay, long usec_delay)
 
     return ;
 }
-/*
+
 static void* timer_thread(void* not_used)
 {
     (void)not_used;
     struct sigaction sigact;
+    int ret;
+
+    //printf("%s!!\n", __func__);
 
     sigact.sa_flags = SA_SIGINFO;
-    sigact.sa_sigaction = timer_handler;
-    if(sigaction(SIGALRM, &sigact, NULL) < 0)
+    sigact.sa_sigaction = timer_expire_signal_handler;
+    ret = sigaction(SIGALRM, &sigact, NULL);
+    if(ret == -1)
     {
         printf("sigaction err!!\n");
-        return (void*)(-1);
-        // 에러처리 어떻게 하는지 모름
+        assert(ret == 0);
     }
 
-    set_timer(1, 1);
+    set_periodic_timer(1, 1);
+
+    /* 6.4.1. POSIX 세마포어 & 공유메모리 */
+    while(!global_timer_stopped)
+    {
+        ret = sem_wait(&global_timer_sem);
+        if(ret == -1)
+        {
+            if(errno == EINTR)
+                continue;
+            else
+                assert(ret == 0);
+        }
+
+        sleep(1);
+        system_timeout_handler();
+    }
 
     return 0;
-} */
+}
 
 /* 6.2.5. 스레드 */
 void* watchdog_thread(void* arg)
@@ -216,9 +244,7 @@ int system_server()
 {
     /* 6.2.5. 스레드 */
     int retcode;
-    pthread_t wTid, mTid, dTid, cTid;
-    /* 6.2.4. 타이머 */
-    struct sigaction sigact;
+    pthread_t wTid, mTid, dTid, cTid, tTid;
 
     printf("나 system_server 프로세스!\n");
 
@@ -232,17 +258,6 @@ int system_server()
     camera_queue = mq_open("/camera_queue", O_RDWR);
     assert(camera_queue != -1);
 
-    /* 6.2.4. 타이머 */
-    sigact.sa_flags = SA_SIGINFO;
-    sigact.sa_sigaction = timer_handler;
-    if(sigaction(SIGALRM, &sigact, NULL) < 0)
-    {
-        printf("sigaction err!!\n");
-        return -1;
-    }
-    /* 10초 타이머 등록 */
-    set_timer(10, 0);
-
     /* 6.2.5. 스레드 */
     retcode = pthread_create(&wTid, NULL, watchdog_thread, "watchdog thread\n");
     assert(retcode == 0);
@@ -251,6 +266,8 @@ int system_server()
     retcode = pthread_create(&dTid, NULL, disk_service_thread, "disk service thread\n");
     assert(retcode == 0);
     retcode = pthread_create(&cTid, NULL, camera_service_thread, "camera service thread\n");
+    assert(retcode == 0);
+    retcode = pthread_create(&tTid, NULL, timer_thread, "timer thread\n");
     assert(retcode == 0);
 
     printf("system init done.  waiting...");
