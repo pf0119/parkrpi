@@ -24,6 +24,9 @@
 #include <ucontext.h>
 #include <fcntl.h>
 
+#include <sys/stat.h>
+#include <sys/mman.h>
+
 #define TOY_TOK_BUFSIZE 64
 #define TOY_TOK_DELIM " \t\r\n\a"
 #define TOY_BUFFSIZE 1024
@@ -130,13 +133,15 @@ int toy_mutex(char **args);
 int toy_shell(char **args);
 int toy_message_queue(char **args);
 int toy_exit(char **args);
+int toy_elf(char **args);
 
 char *builtin_str[] = {
     "send",
     "mu",
     "sh",
     "mq",
-    "exit"
+    "exit",
+    "elf"
 };
 
 int (*builtin_func[]) (char **) = {
@@ -144,7 +149,8 @@ int (*builtin_func[]) (char **) = {
     &toy_mutex,
     &toy_shell,
     &toy_message_queue,
-    &toy_exit
+    &toy_exit,
+    &toy_elf
 };
 
 int toy_num_builtins()
@@ -196,6 +202,41 @@ int toy_exit(char **args)
 {
     (void)args;
     return 0;
+}
+
+int toy_elf(char **args)
+{
+    int fd;
+    size_t bufSize;
+    struct stat st;
+    Elf64Hdr *map;
+
+    (void)args;
+
+    fd = open("./sample/sample.elf", O_RDONLY);
+    if (fd < 0)
+    {
+        printf("cannot open ./sample/sample.elf\n");
+        return 1;
+    }
+
+    if (!fstat(fd, &st)) {
+        bufSize = st.st_size;
+        if (!bufSize) {
+            printf("./sample/sample.elf is empty\n");
+            return 1;
+        }
+        printf("real size: %ld\n", bufSize);
+        map = (Elf64Hdr *)mmap(NULL, bufSize, PROT_READ, MAP_PRIVATE, fd, 0);
+        printf("Object file type : %d\n", map->e_type);
+        printf("Architecture : %d\n", map->e_machine);
+        printf("Object file version : %d\n", map->e_version);
+        printf("Entry point virtual address : %ld\n", map->e_entry);
+        printf("Program header table file offset : %ld\n", map->e_phoff);
+        munmap(map, bufSize);
+    }
+
+    return 1;
 }
 
 int toy_shell(char **args)
