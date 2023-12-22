@@ -30,6 +30,7 @@
 #define TOY_TOK_BUFSIZE 64
 #define TOY_TOK_DELIM " \t\r\n\a"
 #define TOY_BUFFSIZE 1024
+#define DUMP_STATE 2
 
 //#define PCP
 
@@ -134,6 +135,7 @@ int toy_shell(char **args);
 int toy_message_queue(char **args);
 int toy_exit(char **args);
 int toy_elf(char **args);
+int toy_dump_state(char **args);
 
 char *builtin_str[] = {
     "send",
@@ -141,7 +143,8 @@ char *builtin_str[] = {
     "sh",
     "mq",
     "exit",
-    "elf"
+    "elf",
+    "dump"
 };
 
 int (*builtin_func[]) (char **) = {
@@ -150,7 +153,8 @@ int (*builtin_func[]) (char **) = {
     &toy_shell,
     &toy_message_queue,
     &toy_exit,
-    &toy_elf
+    &toy_elf,
+    &toy_dump_state
 };
 
 int toy_num_builtins()
@@ -235,6 +239,23 @@ int toy_elf(char **args)
         printf("Program header table file offset : %ld\n", map->e_phoff);
         munmap(map, bufSize);
     }
+
+    return 1;
+}
+
+int toy_dump_state(char **args)
+{
+    (void)args;
+    int mqretcode;
+    mq_msg_t msg;
+
+    msg.msg_type = DUMP_STATE;
+    msg.param1 = 0;
+    msg.param2 = 0;
+    mqretcode = mq_send(camera_queue, (char *)&msg, sizeof(msg), 0);
+    assert(mqretcode == 0);
+    mqretcode = mq_send(monitor_queue, (char *)&msg, sizeof(msg), 0);
+    assert(mqretcode == 0);
 
     return 1;
 }
