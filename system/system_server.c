@@ -22,7 +22,6 @@
 #include <dirent.h>
 #include <sys/inotify.h>
 
-
 #define BUFSIZE 1024
 
 pthread_mutex_t system_loop_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -159,6 +158,7 @@ void* watchdog_thread(void* arg)
 }
 
 #define SENSOR_DATA 1
+#define DUMP_STATE 2
 
 void* monitor_thread(void* arg)
 {
@@ -186,6 +186,15 @@ void* monitor_thread(void* arg)
             printf("sensor info: %d\n", the_sensor_info->press);
             printf("sensor humidity: %d\n", the_sensor_info->humidity);
             toy_shm_detach(the_sensor_info);
+        }
+        else if(msg.msg_type == DUMP_STATE)
+        {
+            // 여기에 dumpstate를 구현해 주세요.
+            // dumpstate();
+        }
+        else
+        {
+            printf("monitor_thread: unknown message. xxx\n");
         }
     }
 
@@ -300,6 +309,14 @@ void* camera_service_thread(void* arg)
         {
             printf("received %d!! toy_camera_take_picture() will be called!!\n", msg.msg_type);
             toy_camera_take_picture();
+        }
+        else if(msg.msg_type == DUMP_STATE)
+        {
+            toy_camera_dump();
+        }
+        else
+        {
+            printf("camera_service_thread: unknown message. xxx\n");
         }
     }
     return 0;
