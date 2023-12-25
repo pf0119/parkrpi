@@ -26,6 +26,7 @@
 
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <seccomp.h>
 
 #define TOY_TOK_BUFSIZE 64
 #define TOY_TOK_DELIM " \t\r\n\a"
@@ -136,6 +137,7 @@ int toy_message_queue(char **args);
 int toy_exit(char **args);
 int toy_elf(char **args);
 int toy_dump_state(char **args);
+int toy_mincore(char **args);
 
 char *builtin_str[] = {
     "send",
@@ -144,7 +146,8 @@ char *builtin_str[] = {
     "mq",
     "exit",
     "elf",
-    "dump"
+    "dump",
+    "mincore"
 };
 
 int (*builtin_func[]) (char **) = {
@@ -154,7 +157,8 @@ int (*builtin_func[]) (char **) = {
     &toy_message_queue,
     &toy_exit,
     &toy_elf,
-    &toy_dump_state
+    &toy_dump_state,
+    &toy_mincore
 };
 
 int toy_num_builtins()
@@ -256,6 +260,20 @@ int toy_dump_state(char **args)
     assert(mqretcode == 0);
     mqretcode = mq_send(monitor_queue, (char *)&msg, sizeof(msg), 0);
     assert(mqretcode == 0);
+
+    return 1;
+}
+
+int toy_mincore(char **args)
+{
+    (void)args;
+    unsigned char vec[20];
+    int res;
+    size_t page = sysconf(_SC_PAGESIZE);
+    void *addr = mmap(NULL, 20 * page, PROT_READ | PROT_WRITE,
+                    MAP_NORESERVE | MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+    res = mincore(addr, 10 * page, vec);
+    assert(res == 0);
 
     return 1;
 }
@@ -382,6 +400,7 @@ int input()
     /* 6.2.5. 스레드 */
     int retcode;
     pthread_t cTid, sTid;
+    scmp_filter_ctx ctx;
 
     printf("나 input 프로세스!\n");
 
@@ -398,6 +417,29 @@ int input()
 
         return 0;
     }
+
+    /* 6.6.1. 보안 관련 시스템 콜 */
+    ctx = seccomp_init(SCMP_ACT_ALLOW);
+    if (ctx == NULL) {
+        printf("seccomp_init failed");
+        return -1;
+    }
+
+    int rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(mincore), 0);
+    if (rc < 0) {
+        printf("seccomp_rule_add failed");
+        return -1;
+    }
+
+    seccomp_export_pfc(ctx, 5);
+    seccomp_export_bpf(ctx, 6);
+
+    rc = seccomp_load(ctx);
+    if (rc < 0) {
+        printf("seccomp_load failed");
+        return -1;
+    }
+    seccomp_release(ctx);
 
     /* 6.4.2. 시스템 V 메시지 큐 & 세마포어 & 공유 메모리 */
     /* 센서 정보를 공유하기 위한, 시스템 V 공유 메모리를 생성한다 */
