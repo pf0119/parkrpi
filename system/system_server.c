@@ -15,12 +15,13 @@
 #include <sys/time.h>
 #include <time.h>
 #include <semaphore.h>
-#include <camera_HAL.h>
 #include <mqueue.h>
 #include <mq_message.h>
 #include <shared_memory.h>
 #include <dirent.h>
 #include <sys/inotify.h>
+#include <dump_state.h>
+#include <hardware.h>
 
 #define BUFSIZE 1024
 
@@ -189,8 +190,7 @@ void* monitor_thread(void* arg)
         }
         else if(msg.msg_type == DUMP_STATE)
         {
-            // 여기에 dumpstate를 구현해 주세요.
-            // dumpstate();
+            dumpstate();
         }
         else
         {
@@ -281,21 +281,25 @@ void* disk_service_thread(void* arg)
 }
 
 #define CAMERA_TAKE_PICTURE 1
+#define DUMP_STATE 2
 
 void* camera_service_thread(void* arg)
 {
     (void)arg;
-    char *s = arg;
-
-    printf("%s", s);
-
-    toy_camera_open();
-
     /* 6.3.2. POSIX 메시지 큐 */
     int ret;
     mq_msg_t msg;
+    hw_module_t *module = NULL;
 
     printf("%s", (char*)arg);
+
+    /* 6.5.2. 공유 라이브러리 */
+    ret = hw_get_camera_module((const hw_module_t**)&module);
+    assert(ret == 0);
+    printf("Camera module name: %s\n", module->name);
+    printf("Camera module tag: %d\n", module->tag);
+    printf("Camera module id: %s\n", module->id);
+    module->open();
 
     while(1)
     {
@@ -307,12 +311,12 @@ void* camera_service_thread(void* arg)
         printf("msg.param2 : %d\n", msg.param2);
         if(msg.msg_type == CAMERA_TAKE_PICTURE)
         {
-            printf("received %d!! toy_camera_take_picture() will be called!!\n", msg.msg_type);
-            toy_camera_take_picture();
+            printf("received %d!! take_picture() will be called!!\n", msg.msg_type);
+            module->take_picture();
         }
         else if(msg.msg_type == DUMP_STATE)
         {
-            toy_camera_dump();
+            module->dump();
         }
         else
         {

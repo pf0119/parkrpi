@@ -13,5 +13,5 @@ INC = -I${SYSTEM} -I${UI} -I${WEB_SERVER} -I${HAL} -I./
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror ${INC}
 CXX = g++
-CXXLIBS = -lpthread -lm -lrt
+CXXLIBS = -lpthread -lm -lrt -Wl,--no-as-needed -ldl -lseccomp
 CXXFLAGS = ${INC} -g -O0 -std=c++14
