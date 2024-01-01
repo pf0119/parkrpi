@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <sys/prctl.h>
 #include <sys/types.h>
@@ -22,6 +24,7 @@
 #include <sys/inotify.h>
 #include <dump_state.h>
 #include <hardware.h>
+#include <sched.h>
 
 #define BUFSIZE 1024
 
@@ -326,6 +329,44 @@ void* camera_service_thread(void* arg)
     return 0;
 }
 
+/* 9.2.3. 리눅스 스케줄러 (FIFO, RR) 분석 및 활용 */
+// 디바이스 드라이버를 real time으로 구동하기 위한 부분(?)
+void* engine_thread()
+{
+    struct sched_param sched;
+    cpu_set_t set;
+    CPU_ZERO(&set);
+
+    memset(&sched, 0, sizeof(sched));
+    sched.sched_priority = 50;
+
+    printf("rr thread started [%d]\n", gettid());
+
+    if(sched_setscheduler(gettid(), SCHED_RR, &sched) < 0)
+    {
+        perror("SETSCHEDULER failed!!");
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        printf("Priority set to \"%d\"\n", sched.sched_priority);
+    }
+
+    CPU_SET(0, &set);
+
+    if(sched_setaffinity(gettid(), sizeof(set), &set) == -1)
+    {
+        perror("sched_setaffinity");
+        exit(EXIT_FAILURE);
+    }
+
+    // 임시 구동
+    while(1)
+        sleep(10000);
+
+    return 0;
+}
+
 /* 6.3.1. 락과 뮤텍스 */
 void signal_exit(void)
 {
@@ -341,7 +382,7 @@ int system_server()
 {
     /* 6.2.5. 스레드 */
     int retcode;
-    pthread_t wTid, mTid, dTid, cTid, tTid;
+    pthread_t wTid, mTid, dTid, cTid, tTid, eTid;
 
     printf("나 system_server 프로세스!\n");
 
@@ -365,6 +406,8 @@ int system_server()
     retcode = pthread_create(&cTid, NULL, camera_service_thread, "camera service thread\n");
     assert(retcode == 0);
     retcode = pthread_create(&tTid, NULL, timer_thread, "timer thread\n");
+    assert(retcode == 0);
+    retcode = pthread_create(&eTid, NULL, engine_thread, "timer thread\n");
     assert(retcode == 0);
 
     printf("system init done.  waiting...");
