@@ -138,6 +138,7 @@ int toy_exit(char **args);
 int toy_elf(char **args);
 int toy_dump_state(char **args);
 int toy_mincore(char **args);
+int toy_busy(char **args);
 
 char *builtin_str[] = {
     "send",
@@ -147,7 +148,8 @@ char *builtin_str[] = {
     "exit",
     "elf",
     "dump",
-    "mincore"
+    "mincore",
+    "busy"
 };
 
 int (*builtin_func[]) (char **) = {
@@ -158,7 +160,8 @@ int (*builtin_func[]) (char **) = {
     &toy_exit,
     &toy_elf,
     &toy_dump_state,
-    &toy_mincore
+    &toy_mincore,
+    &toy_busy
 };
 
 int toy_num_builtins()
@@ -275,6 +278,14 @@ int toy_mincore(char **args)
     res = mincore(addr, 10 * page, vec);
     assert(res == 0);
 
+    return 1;
+}
+
+int toy_busy(char **args)
+{
+    (void)args;
+    while (1)
+        ;
     return 1;
 }
 
