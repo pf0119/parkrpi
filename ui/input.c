@@ -69,8 +69,14 @@ void segfault_handler(int sig_num, siginfo_t* info, void* ucontext)
     uc = (sig_ucontext_t*) ucontext;
 
     /* Get the address at the time the signal was raised */
-    caller_address = (void*) uc->uc_mcontext.rip;  // RIP: x86_64 specific     arm_pc: ARM
-
+    // rip: x86_64 specific, arm_pc: ARM, pc: ARM64
+#if defined(__x86_64__)
+    caller_address = (void*) uc->uc_mcontext.rip;
+#elif defined(__arm__)
+    caller_address = (void*) uc->uc_mcontext.arm_pc;
+#elif defined(__aarch64__)
+    caller_address = (void*) uc->uc_mcontext.pc;
+#endif
     fprintf(stderr, "\n");
 
     if (sig_num == SIGSEGV)
