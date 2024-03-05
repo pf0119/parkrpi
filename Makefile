@@ -58,6 +58,26 @@ libcamera.toy.so:
 # ControlThread.o: $(HAL)/ControlThread.cpp
 # 	$(CXX) -g $(INCLUDES) $(CXXFLAGS) -c  $(HAL)/ControlThread.cpp
 
+GO = GOGC=off go
+# go module
+# MODULE = $(shell env GO111MODULE=on $(GO) list -m)
+#
+
+LDFLAGS += -s -w
+
+## build: Build
+.PHONY: fe
+fe: | ; $(info $(M) building fe…)
+	cd api && npm ci && cd ../toy-fe && npm ci && npm run build && cp -a dist/* ../be/frontend/dist/
+
+.PHONY: be
+be: | ; $(info $(M) building be…)
+	cd be && env GOARCH=arm64 CGO_ENABLED=1 GOOS=linux GOGC=off GO111MODULE=on  $(GO) build -ldflags '$(LDFLAGS)' -o be
+
+.PHONY: modules
+modules:
+	cd drivers/sensor && make
+
 .PHONY: clean
 clean:
 	rm -rf *.o parkrpi
